@@ -1,0 +1,17 @@
+[
+    {   
+        "style": "Date",
+        "path": "./log/info*",
+        "topic": "test-info"
+    },
+    {   
+        "style": "Date",
+        "path": "./log/test",
+        "topic": "test-access"
+    },
+    {   
+        "style": "File",
+        "path": "./log/access.log",
+        "topic": "test-access"
+    }
+]

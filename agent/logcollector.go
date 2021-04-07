@@ -2,10 +2,8 @@ package agent
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
-
 	"github.com/y7ut/logagent/etcd"
 )
 
@@ -28,7 +26,7 @@ func loadCollectorConfig() (collectors []Collector) {
 	err := decoder.Decode(&collectors)
 
 	if err != nil {
-		fmt.Println("Load Collectors Error:", err)
+		log.Println("Load Collectors Error:", err)
 	}
 
 	return collectors
@@ -42,8 +40,33 @@ func getEtcdCollectorConfig() (collectors []Collector) {
 	err := json.Unmarshal(logConfig, &collectors)
 
 	if err != nil {
-		fmt.Println("Load Collectors Error:", err)
+		log.Println("Load Collectors Error:", err)
 	}
 	log.Println("load config success!")
 	return collectors
+}
+
+// 返回
+func watchEtcdConfig() chan []Collector {
+	handleCollector := make(chan []Collector)
+
+	go func ()  {
+		etcdConfChan := etcd.WatchLogConfToEtcd()
+
+		for confResp := range etcdConfChan {
+			// 这里我们只分析第一个事件就可以
+			var collectors []Collector
+	
+			changedConf := confResp.Events[0].Kv.Value
+			err := json.Unmarshal(changedConf, &collectors)
+	
+			if err != nil {
+				log.Println("Load New Collectors Error:", err)
+			}
+			log.Println("load New config success!")
+			
+			handleCollector<- collectors
+		}
+	}()
+	return handleCollector
 }

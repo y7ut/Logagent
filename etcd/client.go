@@ -15,6 +15,12 @@ var (
 	statusPath = "/logagent/active/"
 )
 
+var cli *clientv3.Client
+
+func init(){
+	cli = connect()
+}
+
 func connect() *clientv3.Client{
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{conf.APPConfig.Etcd.Address},
@@ -29,16 +35,6 @@ func connect() *clientv3.Client{
 }
 
 func GetLogConfToEtcd() []byte {
-	cli := connect()
-
-	defer func() {
-		err := cli.Close()
-		if err != nil {
-			panic(fmt.Sprintf("close failed, err:%s \n", err))
-		}
-		log.Println("close etcd succ")
-	}()
-
 	key := configPath + conf.APPConfig.ID
 	activeKey := statusPath + conf.APPConfig.ID
 
@@ -81,26 +77,11 @@ func GetLogConfToEtcd() []byte {
 	return resp.Kvs[0].Value
 }
 
-func WatchLogConfToEtcd() {
-	cli := connect()
+func WatchLogConfToEtcd() clientv3.WatchChan {
 
-	defer func() {
-		err := cli.Close()
-		if err != nil {
-			panic(fmt.Sprintf("close failed, err:%s \n", err))
-		}
-		log.Println("close etcd succ")
-	}()
+	key := configPath + conf.APPConfig.ID
 
-	// key := configPath + conf.APPConfig.ID
+	wch:= cli.Watch(context.Background(), key)
 
-	wch:= cli.Watch(context.Background(), "/test/")
-
-	for resp := range wch {
-		for _, ev := range resp.Events {
-			fmt.Printf("Type: %v, Key:%v, Value:%v\n", ev.Type, string(ev.Kv.Key), string(ev.Kv.Value))
-		}
-	}
-
-	
+	return wch
 }

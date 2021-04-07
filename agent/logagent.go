@@ -2,10 +2,16 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"os"
+	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/hpcloud/tail"
@@ -40,7 +46,41 @@ var (
 	LogChannel = make(chan *Log)
 	Start      = make(chan *Collector)
 	Close      = make(chan *Collector)
+	dataPath   = "./data/"
+	logFormat  = "20060102.log"
 )
+
+func (app *App) setAgent(collector Collector, agent *LogAgent) {
+	app.mu.Lock()
+	app.Agents[collector] = agent
+	app.mu.Unlock()
+}
+
+func (app *App) deleteAgent(collector Collector) {
+	app.mu.Lock()
+	delete(app.Agents, collector)
+	app.mu.Unlock()
+}
+
+func (app *App) getAgent(collector Collector) (*LogAgent, bool) {
+	var result *LogAgent
+	var ok bool
+	app.mu.Lock()
+	result, ok = app.Agents[collector]
+	app.mu.Unlock()
+	return result, ok
+}
+
+func (app *App) listAgent() map[Collector]bool {
+	result := make(map[Collector]bool)
+	app.mu.Lock()
+	for k := range app.Agents {
+		// log.Println(k)
+		result[k] = true
+	}
+	app.mu.Unlock()
+	return result
+}
 
 var wg sync.WaitGroup
 
@@ -65,13 +105,15 @@ func InitAgent(c Collector) (*LogAgent, error) {
 			cancel()
 			return nil, fmt.Errorf("logagent file name(%s) format error", c.Path)
 		}
-		fileName = time.Now().Format(c.Path[:formatNum] + "200601021504.log")
-		tick := time.Tick(10 * time.Second)
-		// TODO: 之后会添加按日期归档的
+		now := time.Now()
+		fileName = now.Format(c.Path[:formatNum] + logFormat)
+		yyyy, mm, dd := now.Date()
 		go func() {
 			select {
-			case <-tick:
+			case <-time.After(time.Date(yyyy, mm, dd+1, 0, 0, 0, 0, now.Location()).Sub(now)):
+				// 一个引爆倒计时
 				Close <- &c
+				time.Sleep(500 * time.Millisecond)
 				wg.Add(1)
 				Start <- &c
 				wg.Wait()
@@ -81,10 +123,17 @@ func InitAgent(c Collector) (*LogAgent, error) {
 		}()
 	}
 
+	offset, err := getLogFileOffset(fileName)
+
+	if err != nil {
+
+		offset = 0
+	}
+
 	config := tail.Config{
 		ReOpen:    true, // true则文件被删掉阻塞等待新建该文件，false则文件被删掉时程序结束
 		Follow:    true, // true则一直阻塞并监听指定文件，false则一次读完就结束程序
-		Location:  &tail.SeekInfo{Offset: 0, Whence: 2},
+		Location:  &tail.SeekInfo{Offset: offset, Whence: 0},
 		MustExist: false, // true则没有找到文件就报错并结束，false则没有找到文件就阻塞保持住
 		Poll:      true,  // 使用Linux的Poll函数，poll的作用是把当前的文件指针挂到等待队列
 	}
@@ -100,57 +149,93 @@ func InitAgent(c Collector) (*LogAgent, error) {
 	return logAgent, nil
 }
 
-func (app *App) setAgent(collector *Collector, agent *LogAgent) {
-	app.mu.Lock()
-	app.Agents[*collector] = agent
-	app.mu.Unlock()
-}
-
-func (app *App) deleteAgent(collector *Collector) {
-	app.mu.Lock()
-	delete(app.Agents, *collector)
-	app.mu.Unlock()
-}
-
-func (app *App) getAgent(collector *Collector) (*LogAgent, bool) {
-	var result *LogAgent
-	var ok bool
-	app.mu.Lock()
-	result, ok = app.Agents[*collector]
-	app.mu.Unlock()
-	return result, ok
-}
-
 func Init() *App {
 	app := &App{Agents: map[Collector]*LogAgent{}}
 	return app
 }
 
+func (app *App) safeExit() {
+	listAgent := app.listAgent()
+	for c := range listAgent {
+		//没有保存的删除了
+		log.Println("Safe Close Agent :", c)
+		Close <- &c
+		time.Sleep(500 * time.Millisecond)
+	}
+	os.Exit(0)
+}
+
 func (app *App) Run() {
+
+	c := make(chan os.Signal)
+	// 监听信号
+	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
+
+	go func() {
+		for s := range c {
+			switch s {
+			case syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM:
+				log.Println("Safe Exit:", s)
+				app.safeExit()
+			}
+		}
+	}()
+
 	// 收集所有消息，每个消息中包含了应该对应Topic的Kafka-Producer
 	go masterChannel(LogChannel)
+
+	go func() {
+
+		for eidtCollectors := range watchEtcdConfig() {
+			listAgent := app.listAgent()
+			for _, c := range eidtCollectors {
+				_, ok := app.getAgent(c)
+				if ok {
+					// 如果有的话就hash一下
+					listAgent[c] = false
+				} else {
+					//没有发送到新增chan
+					log.Println("Eidt Add Agent :", c)
+					wg.Add(1)
+					Start <- &c
+					wg.Wait()
+					time.Sleep(500 * time.Millisecond)
+				}
+			}
+			for c, alive := range listAgent {
+				if alive {
+					//没有保存的删除了
+					log.Println("Eidt Close Agent :", c)
+					Close <- &c
+					time.Sleep(500 * time.Millisecond)
+				}
+			}
+		}
+	}()
 
 	go func() {
 		var count int
 		// 初始化时实际是想监控文件的通道发送一个新的文件日志代理
 		for _, collector := range getEtcdCollectorConfig() {
-			fmt.Println("First Add Agent :", collector)
+			_, ok := app.getAgent(collector)
+			if ok {
+				log.Println("already exist:" + collector.Path)
+				continue
+			}
+			log.Println("First Add Agent :", collector)
 			wg.Add(1)
 			Start <- &collector
 			wg.Wait()
-			// time.Sleep(time.Second)
+			time.Sleep(500 * time.Millisecond)
 			count++
 		}
-		log.Printf("success start %d logagent", count)
+		log.Printf("total start %d logagent\n", count)
 	}()
 
 	for {
 		select {
 		// 有新的小伙伴加入了监控
 		case collector := <-Start:
-			// fmt.Println(collector)
-			// 有人要走 走的时候需要留下一些东西，记录offset等
-			// 很多情况都可以触发这个行为，必须更换日期了，或者退出程序
 
 			currentLogAgent, err := InitAgent(*collector)
 			// if currentLogAgent.LogFile == "./log/access.log" {
@@ -162,25 +247,32 @@ func (app *App) Run() {
 			// }
 			if err != nil {
 				log.Println(err)
-
-			} else {
-				app.setAgent(collector, currentLogAgent)
-				go generator(currentLogAgent.Tail.Lines, currentLogAgent)
-				go producer(currentLogAgent.Receive)
+				wg.Done()
+				continue
 			}
+
+			app.setAgent(*collector, currentLogAgent)
+			go generator(currentLogAgent.Tail.Lines, currentLogAgent)
+			go producer(currentLogAgent.Receive)
+
 			wg.Done()
 
 		case collector := <-Close:
 
 			// 有人要走 走的时候需要留下一些东西，记录offset等
 			// 很多情况都可以触发这个行为，必须更换日期了，或者退出程序
-			// fmt.Println(app.Agents)
 
-			shutdownLogAgent, ok := app.getAgent(collector)
+			shutdownLogAgent, ok := app.getAgent(*collector)
 			if !ok {
 				log.Println("close a unsafe Agent")
+				continue
 			}
-			log.Println("closeing " + shutdownLogAgent.LogFile)
+			offset, _ := shutdownLogAgent.Tail.Tell()
+
+			// 记录offset
+			log.Printf("closeing  %s  offset at %d:", shutdownLogAgent.LogFile, offset)
+			putLogFileOffset(shutdownLogAgent.Tail.Filename, offset)
+
 			if err := shutdownLogAgent.Tail.Stop(); err != nil {
 				log.Println("failed to close tail:", err)
 			}
@@ -191,9 +283,37 @@ func (app *App) Run() {
 				log.Println("failed to close writer:", err)
 			}
 
-			app.deleteAgent(collector)
+			app.deleteAgent(*collector)
 		}
 	}
+
+}
+
+// 设置文件的offset
+func putLogFileOffset(filename string, offset int64) error {
+	content := []byte(strconv.FormatInt(offset, 10))
+	offilename := dataPath + base64.StdEncoding.EncodeToString([]byte(filename)) + ".offset"
+	log.Printf("save offset file in %s with %d", offilename, content)
+	err := ioutil.WriteFile(offilename, content, 0644)
+	return err
+}
+
+// 读取
+func getLogFileOffset(filename string) (int64, error) {
+
+	offilename := dataPath + base64.StdEncoding.EncodeToString([]byte(filename)) + ".offset"
+	var result int64
+	offset, err := ioutil.ReadFile(offilename)
+	if err != nil {
+		return result, err
+	}
+
+	result, err = strconv.ParseInt(string(offset), 10, 64)
+	if err != nil {
+		return result, err
+	}
+
+	return result, nil
 
 }
 
@@ -215,8 +335,9 @@ func producer(messages <-chan *Log) {
 		})
 		if err != nil {
 			log.Println("failed to write messages:", err)
+			// logmsg.Source.Cancel()
+			// // 取消掉这个agent
 		}
-
 	}
 }
 

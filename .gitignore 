@@ -1,0 +1,5 @@
+/.idea
+*.exe
+/log
+logagent
+/data

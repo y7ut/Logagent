@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+
 	"github.com/y7ut/logagent/etcd"
 )
 
@@ -50,22 +51,24 @@ func getEtcdCollectorConfig() (collectors []Collector) {
 func watchEtcdConfig() chan []Collector {
 	handleCollector := make(chan []Collector)
 
-	go func ()  {
+	go func() {
 		etcdConfChan := etcd.WatchLogConfToEtcd()
 
 		for confResp := range etcdConfChan {
 			// 这里我们只分析第一个事件就可以
 			var collectors []Collector
-	
+			if len(confResp.Events) == 0 {
+				continue
+			}
 			changedConf := confResp.Events[0].Kv.Value
 			err := json.Unmarshal(changedConf, &collectors)
-	
+
 			if err != nil {
 				log.Println("Load New Collectors Error:", err)
 			}
 			log.Println("load New config success!")
-			
-			handleCollector<- collectors
+
+			handleCollector <- collectors
 		}
 	}()
 	return handleCollector

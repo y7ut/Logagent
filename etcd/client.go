@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	configPath = "/logagent/"
+	configPath = "/logagent/config/"
 	statusPath = "/logagent/active/"
 )
 
@@ -75,6 +75,27 @@ func GetLogConfToEtcd() []byte {
 	}
 
 	return resp.Kvs[0].Value
+}
+
+func CloseEvent(){
+	activeKey := statusPath + conf.APPConfig.ID
+
+	defer func() {
+		err := cli.Close()
+		if err != nil {
+			panic(fmt.Sprintf("close failed, err:%s \n", err))
+		}
+		log.Println("close etcd succ")
+	}()
+
+
+	// 注册激活状态
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	_, err := cli.Put(ctx, activeKey, "")
+	cancel()
+	if err != nil {
+		panic(fmt.Sprintf("get failed, err:%s \n", err))
+	}
 }
 
 func WatchLogConfToEtcd() clientv3.WatchChan {

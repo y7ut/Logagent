@@ -1,7 +1,7 @@
 [
     {   
         "style": "Date",
-        "path": "./log/info*",
+        "path": "./log/info_2006-01-02.log",
         "topic": "test-info"
     },
     {   

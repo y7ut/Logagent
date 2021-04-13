@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -177,7 +176,7 @@ func (app *App) Run() {
 	// 收集所有消息，每个消息中包含了应该对应Topic的Kafka-Producer
 	go masterChannel(LogChannel)
 
-	// 结束和关闭 
+	// 结束和关闭
 	go func() {
 		for {
 			select {
@@ -198,7 +197,7 @@ func (app *App) Run() {
 
 			case collector := <-Close:
 				//用上下文cancel触发关闭行为
-			
+
 				// 很多情况都可以触发这个行为，必须更换日期了，或者退出程序
 				shutdownLogAgent, ok := app.getAgent(*collector)
 
@@ -211,13 +210,13 @@ func (app *App) Run() {
 				offset, _ := shutdownLogAgent.Tail.Tell()
 				log.Printf("closeing  %s  offset at %d:", shutdownLogAgent.LogFile, offset)
 				putLogFileOffset(shutdownLogAgent.Tail.Filename, offset)
-				
+
 				if err := shutdownLogAgent.Tail.Stop(); err != nil {
 					exitwg.Done()
 					log.Println("failed to close tail:", err)
 					continue
 				}
-				
+
 				app.deleteAgent(*collector)
 				log.Println("Close collector success :", collector)
 				exitwg.Done()
@@ -284,7 +283,6 @@ func (app *App) Run() {
 		switch s {
 		case syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM:
 			log.Println("Safe Exit:", s)
-			pprof.StopCPUProfile()
 			app.safeExit()
 		}
 	}
@@ -400,14 +398,14 @@ func masterChannel(messages <-chan *Log) {
 	for logmsg := range messages {
 		// log.Printf("%s Log: %s - %s\n", logmsg.Source.LogFile, logmsg.Content, logmsg.CreatedAt.Format("2006-01-02 15:04:05"))
 		taskReceive := logmsg.Source.Receive
-		select{
-			case <-logmsg.Source.context.Done():
-				close(taskReceive)
-				log.Println("closeing Kafka Sender of ", logmsg.Source.LogFile)
-			default:
-				
-				taskReceive <- logmsg
+		select {
+		case <-logmsg.Source.context.Done():
+			close(taskReceive)
+			log.Println("closeing Kafka Sender of ", logmsg.Source.LogFile)
+		default:
+
+			taskReceive <- logmsg
 		}
-		
+
 	}
 }

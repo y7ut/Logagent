@@ -2,6 +2,7 @@ package conf
 
 import (
 	"log"
+
 	"gopkg.in/ini.v1"
 )
 
@@ -21,6 +22,7 @@ type Kafka struct {
 type App struct {
 	ID string `ini:"logagent_id"`
 }
+
 // ETCD 配置
 type Etcd struct {
 	Address string `ini:"address"`

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"time"
+
 	"github.com/coreos/etcd/clientv3"
 	"github.com/y7ut/logagent/conf"
 )
@@ -17,11 +18,11 @@ var (
 
 var cli *clientv3.Client
 
-func init(){
+func init() {
 	cli = connect()
 }
 
-func connect() *clientv3.Client{
+func connect() *clientv3.Client {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{conf.APPConfig.Etcd.Address},
 		DialTimeout: 5 * time.Second,
@@ -77,7 +78,7 @@ func GetLogConfToEtcd() []byte {
 	return resp.Kvs[0].Value
 }
 
-func CloseEvent(){
+func CloseEvent() {
 	activeKey := statusPath + conf.APPConfig.ID
 
 	defer func() {
@@ -87,7 +88,6 @@ func CloseEvent(){
 		}
 		log.Println("close etcd succ")
 	}()
-
 
 	// 注册激活状态
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -102,7 +102,7 @@ func WatchLogConfToEtcd() clientv3.WatchChan {
 
 	key := configPath + conf.APPConfig.ID
 
-	wch:= cli.Watch(context.Background(), key)
+	wch := cli.Watch(context.Background(), key)
 
 	return wch
 }

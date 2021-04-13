@@ -1,8 +1,8 @@
 package sender
 
 import (
-	"github.com/y7ut/logagent/conf"
 	"github.com/segmentio/kafka-go"
+	"github.com/y7ut/logagent/conf"
 )
 
 func InitTopicWriter(topic string) *kafka.Writer {

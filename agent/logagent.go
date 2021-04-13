@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -72,6 +73,13 @@ func (app *App) getAgent(collector Collector) (*LogAgent, bool) {
 	return result, ok
 }
 
+func (app *App) allAgent() (Agents map[Collector]*LogAgent) {
+	app.mu.Lock()
+	Agents = app.Agents
+	app.mu.Unlock()
+	return Agents
+}
+
 func (app *App) listAgent() map[Collector]bool {
 	result := make(map[Collector]bool)
 	app.mu.Lock()
@@ -97,8 +105,9 @@ func InitAgent(c Collector) (*LogAgent, error) {
 		go func() {
 			select {
 			case <-ctx.Done():
+				// 不触发倒计时
 				Close <- &c
-				exitwg.Wait()
+				return
 			}
 		}()
 	case "Date":
@@ -114,17 +123,18 @@ func InitAgent(c Collector) (*LogAgent, error) {
 		go func() {
 			select {
 			case <-time.After(time.Date(yyyy, mm, dd+1, 0, 0, 0, 0, now.Location()).Sub(now)):
+				// case <-time.After(5*time.Second):
 				// 一个引爆倒计时
-
 				Close <- &c
-				exitwg.Wait()
 				time.Sleep(500 * time.Millisecond)
-
+				wg.Add(1)
 				Start <- &c
 				wg.Wait()
+				return
 			case <-ctx.Done():
+				// 不触发倒计时
 				Close <- &c
-				exitwg.Wait()
+				return
 			}
 		}()
 	}
@@ -162,40 +172,59 @@ func Init() *App {
 	return app
 }
 
-func (app *App) safeExit() {
-	listAgent := app.listAgent()
-
-	for c := range listAgent {
-		//没有保存的删除了
-		log.Println("Safe Close Agent :", c)
-		Close <- &c
-		exitwg.Wait()
-		// time.Sleep(800 * time.Millisecond)
-	}
-	// close(LogChannel)
-	etcd.CloseEvent()
-	os.Exit(0)
-}
-
 func (app *App) Run() {
-
-	c := make(chan os.Signal)
-	// 监听信号
-	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
-
-	go func() {
-		for s := range c {
-			switch s {
-			case syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM:
-				log.Println("Safe Exit:", s)
-				app.safeExit()
-			}
-		}
-	}()
 
 	// 收集所有消息，每个消息中包含了应该对应Topic的Kafka-Producer
 	go masterChannel(LogChannel)
 
+	// 结束和关闭 
+	go func() {
+		for {
+			select {
+			// 有新的小伙伴加入了监控
+			case collector := <-Start:
+				currentLogAgent, err := InitAgent(*collector)
+				if err != nil {
+					log.Println(err)
+					wg.Done()
+					continue
+				}
+
+				app.setAgent(*collector, currentLogAgent)
+
+				go generator(currentLogAgent)
+				go bigProducer(currentLogAgent)
+				wg.Done()
+
+			case collector := <-Close:
+				//用上下文cancel触发关闭行为
+			
+				// 很多情况都可以触发这个行为，必须更换日期了，或者退出程序
+				shutdownLogAgent, ok := app.getAgent(*collector)
+
+				if !ok {
+					log.Println("close a unsafe Agent")
+					continue
+				}
+
+				// 记录offset
+				offset, _ := shutdownLogAgent.Tail.Tell()
+				log.Printf("closeing  %s  offset at %d:", shutdownLogAgent.LogFile, offset)
+				putLogFileOffset(shutdownLogAgent.Tail.Filename, offset)
+				
+				if err := shutdownLogAgent.Tail.Stop(); err != nil {
+					exitwg.Done()
+					log.Println("failed to close tail:", err)
+					continue
+				}
+				
+				app.deleteAgent(*collector)
+				log.Println("Close collector success :", collector)
+				exitwg.Done()
+			}
+		}
+	}()
+	// 热启动
 	go func() {
 		for eidtCollectors := range watchEtcdConfig() {
 			listAgent := app.listAgent()
@@ -206,8 +235,8 @@ func (app *App) Run() {
 					listAgent[c] = false
 				} else {
 					//没有发送到新增chan
+					wg.Add(1)
 					log.Println("Eidt Add Agent :", c)
-
 					Start <- &c
 					wg.Wait()
 					time.Sleep(500 * time.Millisecond)
@@ -217,89 +246,65 @@ func (app *App) Run() {
 				if alive {
 					//没有保存的删除了
 					log.Println("Eidt Close Agent :", c)
-					Close <- &c
+					exitwg.Add(1)
+					currentAgent, ok := app.getAgent(c)
+					if ok {
+						currentAgent.Cancel()
+					}
+					exitwg.Wait()
 					time.Sleep(500 * time.Millisecond)
 				}
 			}
 		}
 	}()
 
-	go func() {
-		var count int
-		// 初始化时实际是想监控文件的通道发送一个新的文件日志代理
-		for _, collector := range getEtcdCollectorConfig() {
-			_, ok := app.getAgent(collector)
-			if ok {
-				log.Println("already exist:" + collector.Path)
-				continue
-			}
-			// log.Println("init Add Agent :", collector)
-			Start <- &collector
-			wg.Wait()
-			time.Sleep(500 * time.Millisecond)
-			count++
-			log.Println("init Add Agent :", collector)
+	var count int
+	// 初始化时实际是想监控文件的通道发送一个新的文件日志代理
+	initCollectors := getEtcdCollectorConfig()
+	wg.Add(len(initCollectors))
+	for _, collector := range initCollectors {
+		_, ok := app.getAgent(collector)
+		if ok {
+			log.Println("already exist:" + collector.Path)
+			continue
 		}
-		log.Printf("total start %d logagent\n", count)
-	}()
+		Start <- &collector
+		count++
+		log.Println("init Add Agent :", collector)
+		time.Sleep(500 * time.Millisecond)
+	}
+	wg.Wait()
+	log.Printf("total start %d logagent\n", count)
 
-	for {
-		select {
-		// 有新的小伙伴加入了监控
-		case collector := <-Start:
-			wg.Add(1)
-			currentLogAgent, err := InitAgent(*collector)
-			// if currentLogAgent.LogFile == "./log/access.log" {
-			// 	go func ()  {
-			// 		log.Println("will close ")
-			// 		time.Sleep(15*time.Second)
-			// 		currentLogAgent.Cancel()
-			// 	}()
-			// }
-			if err != nil {
-				log.Println(err)
-				wg.Done()
-				continue
-			}
+	c := make(chan os.Signal)
+	// 监听信号
+	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
 
-			app.setAgent(*collector, currentLogAgent)
-			go generator(currentLogAgent)
-			go bigProducer(currentLogAgent.Receive)
-			// go producer(currentLogAgent.Receive)
-			wg.Done()
-
-		case collector := <-Close:
-
-			exitwg.Add(1)
-			// 有人要走 走的时候需要留下一些东西，记录offset等
-			// 很多情况都可以触发这个行为，必须更换日期了，或者退出程序
-			shutdownLogAgent, ok := app.getAgent(*collector)
-			
-			if !ok {
-				log.Println("close a unsafe Agent")
-				continue
-			}
-
-			offset, _ := shutdownLogAgent.Tail.Tell()
-			// 记录offset
-			log.Printf("closeing  %s  offset at %d:", shutdownLogAgent.LogFile, offset)
-			putLogFileOffset(shutdownLogAgent.Tail.Filename, offset)
-			if err := shutdownLogAgent.Tail.Stop(); err != nil {
-				log.Println("failed to close tail:", err)
-			}
-			// 等5秒把当前任务处理了再关
-			// 记录offset
-			log.Println("closeing Kafka Sender")
-			close(shutdownLogAgent.Receive)
-
-			if err := shutdownLogAgent.Sender.Close(); err != nil {
-				log.Println("failed to close writer:", err)
-			}
-			app.deleteAgent(*collector)
-			exitwg.Done()
+	for s := range c {
+		switch s {
+		case syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM:
+			log.Println("Safe Exit:", s)
+			pprof.StopCPUProfile()
+			app.safeExit()
 		}
 	}
 
+}
+
+func (app *App) safeExit() {
+	AllAgents := app.allAgent()
+
+	for c, logagent := range AllAgents {
+		//没有保存的删除了
+		exitwg.Add(1)
+		log.Println("Safe Close Agent of :", c)
+		logagent.Cancel()
+		exitwg.Wait()
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	etcd.CloseEvent()
+	os.Exit(0)
 }
 
 // 设置文件的offset
@@ -339,25 +344,8 @@ func generator(sourceAgent *LogAgent) {
 
 }
 
-// 生成者
-// TODO：现在是一条一条发 效率比较低
-func producer(messages <-chan *Log) {
-	for logmsg := range messages {
-		// log.Printf("%s Sender to  %s - %s\n", logmsg.Content, logmsg.Source.Topic, logmsg.Source.LogFile)
-		log.Printf("Sender to  %s - %s\n", logmsg.Source.Topic, logmsg.Source.LogFile)
-		err := logmsg.Source.Sender.WriteMessages(logmsg.Source.context, kafka.Message{
-			Key:   []byte(logmsg.Source.LogFile),
-			Value: []byte(logmsg.Content),
-		})
-		if err != nil {
-			log.Println("failed to write messages:", err)
-			logmsg.Source.Cancel()
-			// 取消掉这个agent
-		}
-	}
-}
-
-func bigProducer(messages <-chan *Log) {
+// 生產者
+func bigProducer(agent *LogAgent) {
 	tick := time.NewTicker(3 * time.Second)
 	var (
 		start      bool
@@ -371,7 +359,7 @@ func bigProducer(messages <-chan *Log) {
 	for {
 
 		select {
-		case logmsg := <-messages:
+		case logmsg := <-agent.Receive:
 			if logmsg == nil {
 				continue
 			}
@@ -384,6 +372,13 @@ func bigProducer(messages <-chan *Log) {
 			cancel = logmsg.Source.Cancel
 			topic = logmsg.Source.Topic
 			start = true
+		case <-agent.context.Done():
+			tick.Stop()
+			log.Println("closeing Kafka Sender of ", agent.LogFile)
+			if err := agent.Sender.Close(); err != nil {
+				log.Println("failed to close writer:", err)
+			}
+			return
 		case <-tick.C:
 			SenderMu.Lock()
 			currentMessages := bigMessage
@@ -397,7 +392,6 @@ func bigProducer(messages <-chan *Log) {
 					cancel()
 				}
 			}
-
 		}
 	}
 }
@@ -406,6 +400,14 @@ func masterChannel(messages <-chan *Log) {
 	for logmsg := range messages {
 		// log.Printf("%s Log: %s - %s\n", logmsg.Source.LogFile, logmsg.Content, logmsg.CreatedAt.Format("2006-01-02 15:04:05"))
 		taskReceive := logmsg.Source.Receive
-		taskReceive <- logmsg
+		select{
+			case <-logmsg.Source.context.Done():
+				close(taskReceive)
+				log.Println("closeing Kafka Sender of ", logmsg.Source.LogFile)
+			default:
+				
+				taskReceive <- logmsg
+		}
+		
 	}
 }

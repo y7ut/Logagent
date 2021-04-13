@@ -1,12 +1,12 @@
 [
     {   
         "style": "Date",
-        "path": "./log/info_2006-01-02.log",
-        "topic": "test-info"
+        "path": " /home/yichu/docker_project/clim/logs/clim_access-2006-01-02.log",
+        "topic": "clim-test"
     },
     {   
-        "style": "Date",
-        "path": "./log/test",
+        "style": "File",
+        "path": "./log/info.log",
         "topic": "test-access"
     },
     {   
@@ -15,4 +15,3 @@
         "topic": "test-access"
     }
 ]
-

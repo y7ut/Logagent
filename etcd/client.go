@@ -91,7 +91,7 @@ func CloseEvent() {
 
 	// 注册激活状态
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	_, err := cli.Put(ctx, activeKey, "")
+	_, err := cli.Put(ctx, activeKey, "0")
 	cancel()
 	if err != nil {
 		panic(fmt.Sprintf("get failed, err:%s \n", err))

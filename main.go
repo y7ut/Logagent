@@ -7,5 +7,4 @@ import (
 func main() {
 	app := agent.Init()
 	app.Run()
-
 }

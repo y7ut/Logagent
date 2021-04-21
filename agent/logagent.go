@@ -124,7 +124,9 @@ func InitAgent(c Collector) (*LogAgent, error) {
 			case <-time.After(time.Date(yyyy, mm, dd+1, 0, 0, 0, 0, now.Location()).Sub(now)):
 				// case <-time.After(5*time.Second):
 				// 一个引爆倒计时
+				exitwg.Add(1)
 				Close <- &c
+				exitwg.Wait()
 				time.Sleep(500 * time.Millisecond)
 				wg.Add(1)
 				Start <- &c
@@ -136,6 +138,9 @@ func InitAgent(c Collector) (*LogAgent, error) {
 				return
 			}
 		}()
+	default:
+		cancel()
+		return nil, fmt.Errorf("logagent Type(%s) format error", c.Style)
 	}
 
 	offset, err := getLogFileOffset(fileName)
@@ -193,6 +198,7 @@ func (app *App) Run() {
 
 				go generator(currentLogAgent)
 				go bigProducer(currentLogAgent)
+				log.Println("watching ", currentLogAgent.LogFile)
 				wg.Done()
 
 			case collector := <-Close:
@@ -387,7 +393,9 @@ func bigProducer(agent *LogAgent) {
 				err := sender.WriteMessages(ctx, currentMessages...)
 				if err != nil {
 					log.Println("failed to write messages:", err)
+					exitwg.Add(1)
 					cancel()
+					exitwg.Wait()
 				}
 			}
 		}

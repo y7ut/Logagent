@@ -110,9 +110,7 @@ func InitAgent(c Collector) (*LogAgent, error) {
 			}
 		}()
 	case "Date":
-		// 现在是直接获取当前的
-		formatNum := strings.LastIndex(c.Path, "2006-01-02")
-		if formatNum == -1 {
+		if !(strings.Contains(c.Path, "2006-01-02") || strings.Contains(c.Path, "20060102")) {
 			cancel()
 			return nil, fmt.Errorf("logagent file name(%s) format error", c.Path)
 		}
@@ -122,7 +120,6 @@ func InitAgent(c Collector) (*LogAgent, error) {
 		go func() {
 			select {
 			case <-time.After(time.Date(yyyy, mm, dd+1, 0, 0, 0, 0, now.Location()).Sub(now)):
-				// case <-time.After(5*time.Second):
 				// 一个引爆倒计时
 				exitwg.Add(1)
 				Close <- &c

@@ -10,7 +10,7 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-const version = "1.0.0"
+const version = "1.0.1"
 
 var c = flag.String("c", "./logagent.conf", "使用配置文件启动")
 var v = flag.Bool("v", false, "查看当前程序版本")

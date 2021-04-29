@@ -2,4 +2,5 @@
 *.exe
 /log
 logagent
+logagent.conf
 /data

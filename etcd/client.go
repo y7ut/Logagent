@@ -18,7 +18,7 @@ var (
 
 var cli *clientv3.Client
 
-func init() {
+func Init() {
 	cli = connect()
 }
 

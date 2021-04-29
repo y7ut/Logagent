@@ -1,11 +1,5 @@
 package conf
 
-import (
-	"log"
-
-	"gopkg.in/ini.v1"
-)
-
 type LogAgentConf struct {
 	App   `ini:"app"`
 	Kafka `ini:"kafka"`
@@ -31,11 +25,3 @@ type Etcd struct {
 var (
 	APPConfig = new(LogAgentConf)
 )
-
-func init() {
-	// 加载配置文件
-	if err := ini.MapTo(APPConfig, "./logagent.conf"); err != nil {
-		log.Println("load ini file error: ", err)
-		return
-	}
-}

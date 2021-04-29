@@ -172,7 +172,8 @@ func InitAgent(c Collector) (*LogAgent, error) {
 }
 
 func Init() *App {
-	app := &App{Agents: map[Collector]*LogAgent{}}
+	etcd.Init()
+	app := &App{Agents: make(map[Collector]*LogAgent, 0)}
 	return app
 }
 
@@ -361,7 +362,6 @@ func bigProducer(agent *LogAgent) {
 		cancel     context.CancelFunc
 	)
 	for {
-
 		select {
 		case logmsg := <-agent.Receive:
 			if logmsg == nil {

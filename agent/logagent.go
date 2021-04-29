@@ -16,6 +16,7 @@ import (
 
 	"github.com/hpcloud/tail"
 	"github.com/segmentio/kafka-go"
+	"github.com/y7ut/logagent/conf"
 	"github.com/y7ut/logagent/etcd"
 	"github.com/y7ut/logagent/sender"
 )
@@ -358,6 +359,7 @@ func bigProducer(agent *LogAgent) {
 		ctx        context.Context
 		cancel     context.CancelFunc
 	)
+	size := conf.APPConfig.Kafka.QueueSize
 	for {
 		select {
 		case logmsg := <-agent.Receive:
@@ -381,11 +383,21 @@ func bigProducer(agent *LogAgent) {
 			}
 			return
 		case <-tick.C:
+			var currentMessages []kafka.Message
 			SenderMu.Lock()
-			currentMessages := bigMessage
-			bigMessage = []kafka.Message{}
+			currentLen := len(bigMessage)
+			// 如果队列装得下
+			if currentLen <= size {
+				currentMessages = bigMessage
+				bigMessage = []kafka.Message{}
+			}else{
+				// 否则就切割一下队列
+				currentMessages = bigMessage[:size]
+				bigMessage = bigMessage[size:]
+			}
 			SenderMu.Unlock()
-			if len(currentMessages) != 0 && start {
+
+			if currentLen != 0 && start {
 				log.Printf("Sender to  %s total %d\n", topic, len(currentMessages))
 				err := sender.WriteMessages(ctx, currentMessages...)
 				if err != nil {

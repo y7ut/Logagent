@@ -9,7 +9,7 @@ type LogAgentConf struct {
 // kafka 配置
 type Kafka struct {
 	Address   string `ini:"address"`
-	QueueSize string `ini:"queue_size"`
+	QueueSize int `ini:"queue_size"`
 }
 
 // APP 属性

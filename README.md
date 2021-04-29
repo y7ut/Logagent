@@ -19,6 +19,9 @@
 ### 1.0.1
 1. 修复对时间类型日志文件格式的支持
 
+### 1.0.2
+1. 可以设置`Kafka Queue`的长度啦
+
 ## 安装与使用
 
 1. 新建一个目录，将可执行文件添加到目录中(以 下面以 `/var/logagent/` 为例)。
@@ -36,14 +39,12 @@ logagent_id=节点名(需要先去 `ccenter` 注册)
 # Kafka 配置
 [kafka]
 address=localhost:9091(kafka队列配置)
-queue_size=1000(队列数量, 预留)
+queue_size=1000
 
 # Etcd 配置
 [etcd]
 address=localhost:23790 (ETCD Address)
 ```
-
-## 功能
 
 ## TODO
 1. 应使用更加完善的日志记录机制，目前只能输出到STDOUT

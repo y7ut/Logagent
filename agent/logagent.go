@@ -2,13 +2,10 @@ package agent
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -48,8 +45,7 @@ var (
 	LogChannel = make(chan *Log, 50)
 	Start      = make(chan *Collector)
 	Close      = make(chan *Collector)
-	dataPath   = "./data/"
-	logFormat  = "2006-01-02.log"
+	dataPath   = "./runtime/"
 )
 
 func (app *App) setAgent(collector Collector, agent *LogAgent) {
@@ -103,12 +99,8 @@ func InitAgent(c Collector) (*LogAgent, error) {
 	case "File":
 		fileName = c.Path
 		go func() {
-			select {
-			case <-ctx.Done():
-				// 不触发倒计时
-				Close <- &c
-				return
-			}
+			<-ctx.Done()
+			Close <- &c
 		}()
 	case "Date":
 		if !(strings.Contains(c.Path, "2006-01-02") || strings.Contains(c.Path, "20060102")) {
@@ -170,8 +162,21 @@ func InitAgent(c Collector) (*LogAgent, error) {
 }
 
 func Init() *App {
+
+	_, err := os.Stat(dataPath)
+
+    if  err != nil && os.IsNotExist(err) {
+		log.Println("runtime dir not found.")
+		err := os.Mkdir(dataPath, os.ModePerm)
+        if err != nil {
+			panic("create Runtime dir Error")
+        } else {
+			log.Println("create runtime dir success.")
+        }
+    }
+
 	etcd.Init()
-	app := &App{Agents: make(map[Collector]*LogAgent, 0)}
+	app := &App{Agents: make(map[Collector]*LogAgent)}
 	return app
 }
 
@@ -280,7 +285,7 @@ func (app *App) Run() {
 	wg.Wait()
 	log.Printf("total start %d logagent\n", count)
 
-	c := make(chan os.Signal)
+	c := make(chan os.Signal,1)
 	// 监听信号
 	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
 
@@ -308,34 +313,6 @@ func (app *App) safeExit() {
 
 	etcd.CloseEvent()
 	os.Exit(0)
-}
-
-// 设置文件的offset
-func putLogFileOffset(filename string, offset int64) error {
-	content := []byte(strconv.FormatInt(offset, 10))
-	offilename := dataPath + base64.StdEncoding.EncodeToString([]byte(filename)) + ".offset"
-	log.Printf("save offset file in %s with %s", offilename, string(content))
-	err := ioutil.WriteFile(offilename, content, 0644)
-	return err
-}
-
-// 读取
-func getLogFileOffset(filename string) (int64, error) {
-
-	offilename := dataPath + base64.StdEncoding.EncodeToString([]byte(filename)) + ".offset"
-	var result int64
-	offset, err := ioutil.ReadFile(offilename)
-	if err != nil {
-		return result, err
-	}
-
-	result, err = strconv.ParseInt(string(offset), 10, 64)
-	if err != nil {
-		return result, err
-	}
-
-	return result, nil
-
 }
 
 // 消息生成器
@@ -390,7 +367,7 @@ func bigProducer(agent *LogAgent) {
 			if currentLen <= size {
 				currentMessages = bigMessage
 				bigMessage = []kafka.Message{}
-			}else{
+			} else {
 				// 否则就切割一下队列
 				currentMessages = bigMessage[:size]
 				bigMessage = bigMessage[size:]
@@ -400,6 +377,7 @@ func bigProducer(agent *LogAgent) {
 			if currentLen != 0 && start {
 				log.Printf("Sender to  %s total %d\n", topic, len(currentMessages))
 				err := sender.WriteMessages(ctx, currentMessages...)
+	
 				if err != nil {
 					log.Println("failed to write messages:", err)
 					exitwg.Add(1)

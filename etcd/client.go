@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
@@ -24,7 +25,7 @@ func Init() {
 
 func connect() *clientv3.Client {
 	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{conf.APPConfig.Etcd.Address},
+		Endpoints:   strings.Split(conf.APPConfig.Etcd.Address, ","),
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {

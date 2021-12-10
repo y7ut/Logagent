@@ -4,3 +4,4 @@
 logagent
 logagent.conf
 /data
+/runtime

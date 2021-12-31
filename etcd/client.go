@@ -2,7 +2,6 @@ package etcd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -36,47 +35,32 @@ func connect() *clientv3.Client {
 	return cli
 }
 
-func GetLogConfToEtcd() []byte {
+func GetLogConfToEtcd() ([]byte, error) {
 	key := configPath + conf.APPConfig.ID
-	activeKey := statusPath + conf.APPConfig.ID
 
-	// 注册激活状态
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	_, err := cli.Put(ctx, activeKey, "1")
-	cancel()
-	if err != nil {
-		panic(fmt.Sprintf("get failed, err:%s \n", err))
-	}
-
-	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
 	resp, err := cli.Get(ctx, key)
 	cancel()
 	if err != nil {
-		panic(fmt.Sprintf("get failed, err:%s \n", err))
+		return []byte{}, fmt.Errorf("get failed, err:%s ", err)
 	}
 
 	// 如果没有这个节点 那就新增这个节点并且注册为空
 	if len(resp.Kvs) == 0 {
-		// Json打包
-		var emptyLogConfArr []struct{}
-
-		data, err := json.Marshal(emptyLogConfArr)
-		if err != nil {
-
-			panic(fmt.Sprintf("json failed, err:%s \n", err))
-
-		}
-		ctx, cancel = context.WithTimeout(context.Background(), time.Second)
-		_, err = cli.Put(ctx, key, string(data))
-		cancel()
-
-		if err != nil {
-			panic(fmt.Sprintf("put failed, err:%s \n", err))
-		}
-		return data
+		return []byte{}, fmt.Errorf("agent (%s) has not registed", conf.APPConfig.ID)
 	}
 
-	return resp.Kvs[0].Value
+	activeKey := statusPath + conf.APPConfig.ID
+
+	// 注册激活状态
+	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
+	_, err = cli.Put(ctx, activeKey, "1")
+	cancel()
+	if err != nil {
+		return []byte{}, fmt.Errorf("get failed, err:%s ", err)
+	}
+
+	return resp.Kvs[0].Value, nil
 }
 
 func CloseEvent() {

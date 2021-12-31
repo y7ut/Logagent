@@ -165,15 +165,15 @@ func Init() *App {
 
 	_, err := os.Stat(dataPath)
 
-    if  err != nil && os.IsNotExist(err) {
+	if err != nil && os.IsNotExist(err) {
 		log.Println("runtime dir not found.")
 		err := os.Mkdir(dataPath, os.ModePerm)
-        if err != nil {
+		if err != nil {
 			panic("create Runtime dir Error")
-        } else {
+		} else {
 			log.Println("create runtime dir success.")
-        }
-    }
+		}
+	}
 
 	etcd.Init()
 	app := &App{Agents: make(map[Collector]*LogAgent)}
@@ -269,7 +269,11 @@ func (app *App) Run() {
 
 	var count int
 	// 初始化时实际是想监控文件的通道发送一个新的文件日志代理
-	initCollectors := getEtcdCollectorConfig()
+	initCollectors, err := getEtcdCollectorConfig()
+	if err != nil {
+		log.Printf("Init Ectd Config error: %s", err)
+		return
+	}
 	wg.Add(len(initCollectors))
 	for _, collector := range initCollectors {
 		_, ok := app.getAgent(collector)
@@ -285,7 +289,7 @@ func (app *App) Run() {
 	wg.Wait()
 	log.Printf("total start %d logagent\n", count)
 
-	c := make(chan os.Signal,1)
+	c := make(chan os.Signal, 1)
 	// 监听信号
 	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
 
@@ -326,7 +330,7 @@ func generator(sourceAgent *LogAgent) {
 
 // 生產者
 func bigProducer(agent *LogAgent) {
-	tick := time.NewTicker(3 * time.Second)
+	tick := time.NewTicker(1 * time.Second)
 	var (
 		start      bool
 		topic      string
@@ -334,7 +338,6 @@ func bigProducer(agent *LogAgent) {
 		bigMessage []kafka.Message
 		sender     *kafka.Writer
 		ctx        context.Context
-		cancel     context.CancelFunc
 	)
 	size := conf.APPConfig.Kafka.QueueSize
 	for {
@@ -349,7 +352,6 @@ func bigProducer(agent *LogAgent) {
 			})
 			ctx = logmsg.Source.context
 			sender = logmsg.Source.Sender
-			cancel = logmsg.Source.Cancel
 			topic = logmsg.Source.Topic
 			start = true
 		case <-agent.context.Done():
@@ -377,12 +379,9 @@ func bigProducer(agent *LogAgent) {
 			if currentLen != 0 && start {
 				log.Printf("Sender to  %s total %d\n", topic, len(currentMessages))
 				err := sender.WriteMessages(ctx, currentMessages...)
-	
+
 				if err != nil {
 					log.Println("failed to write messages:", err)
-					exitwg.Add(1)
-					cancel()
-					exitwg.Wait()
 				}
 			}
 		}

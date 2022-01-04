@@ -289,11 +289,7 @@ func (app *App) Run() {
 	wg.Wait()
 	log.Printf("total start %d logagent\n", count)
 
-	c := make(chan os.Signal, 1)
-	// 监听信号
-	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
-
-	for s := range c {
+	for s := range sign() {
 		switch s {
 		case syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM:
 			log.Println("Safe Exit:", s)
@@ -302,6 +298,21 @@ func (app *App) Run() {
 	}
 
 }
+
+func sign() <-chan os.Signal {
+	c := make(chan os.Signal, 2)
+
+	signals := []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2}
+	// 监听信号
+	if !signal.Ignored(syscall.SIGHUP) {
+		signals = append(signals, syscall.SIGHUP)
+	}
+
+	signal.Notify(c, signals...)
+
+	return c
+}
+
 
 func (app *App) safeExit() {
 	AllAgents := app.allAgent()

@@ -91,7 +91,6 @@ func InitAgent(c Collector, ctx context.Context) (*LogAgent, error) {
 		fileName = now.Format(c.Path)
 		yyyy, mm, dd := now.Date()
 		LifeCycle := time.Date(yyyy, mm, dd+1, 0, 0, 0, 0, now.Location()).Sub(now)
-		LifeCycle = time.Duration(10 * time.Second)
 		go func() {
 			select {
 			case <-time.After(LifeCycle):

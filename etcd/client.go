@@ -107,3 +107,20 @@ func WatchLogConfToEtcd() clientv3.WatchChan {
 
 	return wch
 }
+
+func GetDelRevValueFromEtcd(key string, rev int64) ([]byte, error) {
+	var value []byte
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	resp, err := cli.Get(ctx, key, clientv3.WithRev(rev))
+	cancel()
+	if err != nil {
+		log.Println(fmt.Sprintf("Get Etcd config failed, err:%s \n", err))
+	}
+
+	if len(resp.Kvs) == 0 {
+		return value, fmt.Errorf("config get error")
+	}
+
+	return resp.Kvs[0].Value, nil
+}

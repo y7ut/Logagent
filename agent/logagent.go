@@ -165,15 +165,15 @@ func Init() *App {
 
 	_, err := os.Stat(dataPath)
 
-    if  err != nil && os.IsNotExist(err) {
+	if err != nil && os.IsNotExist(err) {
 		log.Println("runtime dir not found.")
 		err := os.Mkdir(dataPath, os.ModePerm)
-        if err != nil {
+		if err != nil {
 			panic("create Runtime dir Error")
-        } else {
+		} else {
 			log.Println("create runtime dir success.")
-        }
-    }
+		}
+	}
 
 	etcd.Init()
 	app := &App{Agents: make(map[Collector]*LogAgent)}
@@ -285,7 +285,7 @@ func (app *App) Run() {
 	wg.Wait()
 	log.Printf("total start %d logagent\n", count)
 
-	c := make(chan os.Signal,1)
+	c := make(chan os.Signal, 1)
 	// 监听信号
 	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
 
@@ -337,15 +337,19 @@ func bigProducer(agent *LogAgent) {
 		cancel     context.CancelFunc
 	)
 	size := conf.APPConfig.Kafka.QueueSize
+	AppId := conf.APPConfig.ID
 	for {
 		select {
 		case logmsg := <-agent.Receive:
 			if logmsg == nil {
 				continue
 			}
+			var headers = []kafka.Header{}
+			headers = append(headers, kafka.Header{Key: "source_agent", Value: []byte(AppId)})
 			bigMessage = append(bigMessage, kafka.Message{
-				Key:   []byte(logmsg.Source.LogFile),
-				Value: []byte(logmsg.Content),
+				Key:     []byte(logmsg.Source.LogFile),
+				Value:   []byte(logmsg.Content),
+				Headers: headers,
 			})
 			ctx = logmsg.Source.context
 			sender = logmsg.Source.Sender
@@ -377,7 +381,7 @@ func bigProducer(agent *LogAgent) {
 			if currentLen != 0 && start {
 				log.Printf("Sender to  %s total %d\n", topic, len(currentMessages))
 				err := sender.WriteMessages(ctx, currentMessages...)
-	
+
 				if err != nil {
 					log.Println("failed to write messages:", err)
 					exitwg.Add(1)

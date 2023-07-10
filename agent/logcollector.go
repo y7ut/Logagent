@@ -14,17 +14,21 @@ type Collector struct {
 }
 
 // etcd配置加载
-func getEtcdCollectorConfig() (collectors []Collector) {
+func getEtcdCollectorConfig() (collectors []Collector, err error) {
 
-	logConfig := etcd.GetLogConfToEtcd()
-
-	err := json.Unmarshal(logConfig, &collectors)
+	logConfig, err := etcd.GetLogConfToEtcd()
 
 	if err != nil {
-		log.Println("Load Collectors Error:", err)
+		return collectors, err
+	}
+
+	err = json.Unmarshal(logConfig, &collectors)
+
+	if err != nil {
+		return collectors, err
 	}
 	log.Println("load config success!")
-	return collectors
+	return collectors, nil
 }
 
 // 返回

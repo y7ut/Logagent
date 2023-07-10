@@ -269,7 +269,11 @@ func (app *App) Run() {
 
 	var count int
 	// 初始化时实际是想监控文件的通道发送一个新的文件日志代理
-	initCollectors := getEtcdCollectorConfig()
+	initCollectors, err := getEtcdCollectorConfig()
+	if err != nil {
+		log.Printf("Init Ectd Config error: %s", err)
+		return
+	}
 	wg.Add(len(initCollectors))
 	for _, collector := range initCollectors {
 		_, ok := app.getAgent(collector)
@@ -285,11 +289,7 @@ func (app *App) Run() {
 	wg.Wait()
 	log.Printf("total start %d logagent\n", count)
 
-	c := make(chan os.Signal, 1)
-	// 监听信号
-	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
-
-	for s := range c {
+	for s := range sign() {
 		switch s {
 		case syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM:
 			log.Println("Safe Exit:", s)
@@ -298,6 +298,21 @@ func (app *App) Run() {
 	}
 
 }
+
+func sign() <-chan os.Signal {
+	c := make(chan os.Signal, 2)
+
+	signals := []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2}
+	// 监听信号
+	if !signal.Ignored(syscall.SIGHUP) {
+		signals = append(signals, syscall.SIGHUP)
+	}
+
+	signal.Notify(c, signals...)
+
+	return c
+}
+
 
 func (app *App) safeExit() {
 	AllAgents := app.allAgent()
@@ -326,7 +341,7 @@ func generator(sourceAgent *LogAgent) {
 
 // 生產者
 func bigProducer(agent *LogAgent) {
-	tick := time.NewTicker(3 * time.Second)
+	tick := time.NewTicker(1 * time.Second)
 	var (
 		start      bool
 		topic      string
@@ -334,7 +349,6 @@ func bigProducer(agent *LogAgent) {
 		bigMessage []kafka.Message
 		sender     *kafka.Writer
 		ctx        context.Context
-		cancel     context.CancelFunc
 	)
 	size := conf.APPConfig.Kafka.QueueSize
 	AppId := conf.APPConfig.ID
@@ -353,7 +367,6 @@ func bigProducer(agent *LogAgent) {
 			})
 			ctx = logmsg.Source.context
 			sender = logmsg.Source.Sender
-			cancel = logmsg.Source.Cancel
 			topic = logmsg.Source.Topic
 			start = true
 		case <-agent.context.Done():
@@ -384,9 +397,6 @@ func bigProducer(agent *LogAgent) {
 
 				if err != nil {
 					log.Println("failed to write messages:", err)
-					exitwg.Add(1)
-					cancel()
-					exitwg.Wait()
 				}
 			}
 		}

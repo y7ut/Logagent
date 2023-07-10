@@ -25,7 +25,7 @@ func KafkaSender(ctx context.Context) {
 	writer := sender.InitWriter()
 
 	size := conf.APPConfig.Kafka.QueueSize
-
+	AppId := conf.APPConfig.ID
 	for {
 		select {
 		case <-ctx.Done():
@@ -62,10 +62,14 @@ func KafkaSender(ctx context.Context) {
 			if logmsg == nil {
 				continue
 			}
+			var headers = []kafka.Header{}
+			headers = append(headers, kafka.Header{Key: "source_agent", Value: []byte(AppId)})
+
 			MessageCollection = append(MessageCollection, kafka.Message{
-				Key:   []byte(logmsg.Source.Collector.Path),
-				Value: []byte(logmsg.Content),
-				Topic: logmsg.Source.Collector.Topic,
+				Key:     []byte(logmsg.Source.Collector.Path),
+				Value:   []byte(logmsg.Content),
+				Topic:   logmsg.Source.Collector.Topic,
+				Headers: headers,
 			})
 
 			start = true

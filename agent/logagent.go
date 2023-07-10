@@ -139,7 +139,12 @@ func InitAgent(c Collector, ctx context.Context) (*LogAgent, error) {
 // 监听创建事件
 func (app *App) RegisterFirst() int {
 	var count int
-	for _, collector := range getEtcdCollectorConfig() {
+	configFromEtcd, err := getEtcdCollectorConfig()
+	if err != nil {
+		log.Panic(err)
+	}
+
+	for _, collector := range configFromEtcd {
 		_, ok := app.getAgent(collector.Path)
 		if ok {
 			log.Println("already exist:" + collector.Path)

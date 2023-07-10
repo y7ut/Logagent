@@ -351,15 +351,19 @@ func bigProducer(agent *LogAgent) {
 		ctx        context.Context
 	)
 	size := conf.APPConfig.Kafka.QueueSize
+	AppId := conf.APPConfig.ID
 	for {
 		select {
 		case logmsg := <-agent.Receive:
 			if logmsg == nil {
 				continue
 			}
+			var headers = []kafka.Header{}
+			headers = append(headers, kafka.Header{Key: "source_agent", Value: []byte(AppId)})
 			bigMessage = append(bigMessage, kafka.Message{
-				Key:   []byte(logmsg.Source.LogFile),
-				Value: []byte(logmsg.Content),
+				Key:     []byte(logmsg.Source.LogFile),
+				Value:   []byte(logmsg.Content),
+				Headers: headers,
 			})
 			ctx = logmsg.Source.context
 			sender = logmsg.Source.Sender

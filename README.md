@@ -48,12 +48,8 @@
 
 ## 安装与使用
 
-1. 新建一个目录，将可执行文件添加到目录中(以 下面以 `/var/logagent/` 为例)。
-2. 在目录下添加log目录和配置文件  `logagent.conf`, 确认配置文件的信息。
-3. 对可执行文件添加权限 `chmod +x logagent`。
-4. 启动 `nohup /var/logagent/logagent >> /var/logagent/log/agent.log 2>&1 &`
-5. 观察 `./log/agent.log` 查看是否正常运行。
-6. 注意目录权限
+1. go build -o bifrost
+2. ./bifrost
 
 ## 基础配置
 

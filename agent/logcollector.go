@@ -3,18 +3,17 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/y7ut/logagent/etcd"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 type Collector struct {
-	Style string `json:"style"`
-	Path  string `json:"path"`
-	Topic string `json:"topic"`
+	Style string `json:"style" gird_column:"日志规则" gird_sort:"4"`
+	Path  string `json:"path" gird_column:"路径" gird_sort:"1"`
+	Topic string `json:"topic" gird_column:"日志主题" gird_sort:"2"`
+	Exist string `json:"_" gird_column:"是否存在" gird_sort:"4"`
 }
 
 // etcd配置加载
@@ -45,9 +44,9 @@ func watchEtcdConfig(ctx context.Context) {
 		case confResp := <-etcd.WatchLogConfToEtcd():
 			for _, event := range confResp.Events {
 				switch event.Type {
-				case mvccpb.PUT:
+				case clientv3.EventTypePut:
 					diff, status, err := getCollectorChangeWithEvent(event)
-					fmt.Printf("%s is Happend", status)
+					log.Printf("ETCD watch %s is Happend", status)
 					if err != nil {
 						log.Println("Get Collector Chnage Event Info Error:", err)
 						continue
@@ -60,7 +59,7 @@ func watchEtcdConfig(ctx context.Context) {
 					case "PUT":
 						Start <- &diff
 					}
-				case mvccpb.DELETE:
+				case clientv3.EventTypeDelete:
 					// 节点开启的时候不会出现突然删除的情况所以不考虑
 					continue
 				}

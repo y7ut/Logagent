@@ -2,6 +2,8 @@
 *.exe
 /log
 logagent
+bifrost
+bifrost.conf
 logagent.conf
 /data
 /runtime

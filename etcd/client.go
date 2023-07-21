@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
 	"github.com/y7ut/logagent/conf"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 var (
@@ -23,6 +23,7 @@ func Init() {
 }
 
 func connect() *clientv3.Client {
+
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   strings.Split(conf.APPConfig.Etcd.Address, ","),
 		DialTimeout: 5 * time.Second,
@@ -30,8 +31,6 @@ func connect() *clientv3.Client {
 	if err != nil {
 		panic(fmt.Sprintf("connect failed, err:%s \n", err))
 	}
-
-	log.Println("connect etcd succ")
 	return cli
 }
 

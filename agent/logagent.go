@@ -137,11 +137,11 @@ func InitAgent(c Collector, ctx context.Context) (*LogAgent, error) {
 }
 
 // 监听创建事件
-func (app *App) RegisterFirst() int {
+func (app *App) RegisterFirst() (int, error) {
 	var count int
 	configFromEtcd, err := getEtcdCollectorConfig()
 	if err != nil {
-		log.Panic(err)
+		return 0, err
 	}
 
 	for _, collector := range configFromEtcd {
@@ -155,7 +155,7 @@ func (app *App) RegisterFirst() int {
 		log.Println("init Add Agent :", collector)
 		time.Sleep(500 * time.Millisecond)
 	}
-	return count
+	return count, nil
 }
 
 // 监听创建事件
@@ -191,7 +191,7 @@ func (app *App) AgentLeave() {
 
 		app.mu.Lock()
 		for k := range app.Agents {
-			fmt.Println(k)
+			log.Printf("agent [%s] has leave", k)
 		}
 		app.mu.Unlock()
 

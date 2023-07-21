@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -25,6 +27,25 @@ func Init() *App {
 		}
 	}
 
+	logPath := dataPath + "log/"
+
+	_, err = os.Stat(logPath)
+	if err != nil && os.IsNotExist(err) {
+		err := os.Mkdir(logPath, os.ModePerm)
+		if err != nil {
+			panic("create log dir Error")
+		} else {
+			log.Println("create log dir success.")
+		}
+	}
+
+	writerLog, err := os.OpenFile(logPath + "./bifrost.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, os.ModeAppend|os.ModePerm)
+	if err != nil {
+		log.Fatalf("create file log.txt failed: %v", err)
+	}
+	log.Default().SetFlags(log.LstdFlags)
+	log.Default().SetOutput(io.MultiWriter(writerLog, os.Stderr))
+
 	etcd.Init()
 	app := &App{Agents: make(map[string]*LogAgent)}
 	return app
@@ -47,7 +68,12 @@ func (app *App) Run() {
 	// 代理关闭
 	go app.AgentLeave()
 
-	count := app.RegisterFirst()
+	count, err := app.RegisterFirst()
+	
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
 
 	log.Printf("total start %d logagent\n", count)
 

@@ -4,7 +4,6 @@ import (
 	"container/list"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -31,14 +30,14 @@ func listCollectors(cmd *cobra.Command, args []string) {
 	checkconfig(configPath)
 
 	if err := ini.MapTo(conf.APPConfig, configPath); err != nil {
-		log.Fatalf("load ini file error: %s ", err)
+		fmt.Printf("load ini file error: %s ", err)
 		return
 	}
 	etcd.Init()
 
 	collectorData, err := etcd.GetLogConfToEtcd()
 	if err != nil {
-		fmt.Println("get etcd conf error: %s ", err)
+		fmt.Printf("get etcd conf error: %s ", err)
 		return
 	}
 
@@ -47,7 +46,7 @@ func listCollectors(cmd *cobra.Command, args []string) {
 	err = json.Unmarshal(collectorData, &collectors)
 
 	if err != nil {
-		log.Fatalf("unmarshal error: %s ", err)
+		fmt.Printf("unmarshal error: %s ", err)
 		return
 	}
 

@@ -37,18 +37,13 @@ func (o *ObjectGrid[T]) guessHeaders() {
 	// 分析类型参数类型T的结构
 	// 如果单纯的使用new(T) 在T本身就是一个指针的时候就有问题了
 	// 所以我们要先判断是不是指针，如果是指针给一次机会
-	eg := new(T)
-	v := reflect.ValueOf(eg)
-	var t reflect.Type
-	if v.Kind() == reflect.Ptr {
-		t = reflect.TypeOf(*eg)
-	} else {
-		t = reflect.TypeOf(eg)
-	}
+	eg := *new(T)
+	t := reflect.TypeOf(eg)
 	// 再给一次机会，判断是否为指针
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
+
 	if t.Kind() != reflect.Struct {
 		return
 	}

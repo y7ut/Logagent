@@ -52,25 +52,33 @@ func (o *ObjectGrid[T]) guessHeaders() {
 	unSort := make([]string, 0)
 	for i := 0; i < t.NumField(); i++ {
 		currentField := t.Field(i)
+
+		typeOfCurrentField := currentField.Type
+		if typeOfCurrentField.Kind() == reflect.Ptr {
+			typeOfCurrentField = currentField.Type.Elem()
+		}
+		if typeOfCurrentField.Kind() > reflect.Complex128 && typeOfCurrentField.Kind() != reflect.String {
+			continue
+		}
+
 		currentFieldTag := t.Field(i).Tag.Get("gird_column")
 
 		if currentFieldTag != "" {
 			o.headers[currentField.Name] = currentFieldTag
-		}
-
-		currentFieldSort := t.Field(i).Tag.Get("gird_sort")
-		if currentFieldSort != "" {
-			fieldSort, err := strconv.Atoi(currentFieldSort)
-			if err == nil {
-				for i := fieldSort; ; i++ {
-					if _, get := o.sort[i]; !get {
-						o.sort[i] = currentField.Name
-						break
+			currentFieldSort := t.Field(i).Tag.Get("gird_sort")
+			if currentFieldSort != "" {
+				fieldSort, err := strconv.Atoi(currentFieldSort)
+				if err == nil {
+					for i := fieldSort; ; i++ {
+						if _, get := o.sort[i]; !get {
+							o.sort[i] = currentField.Name
+							break
+						}
 					}
 				}
+			} else {
+				unSort = append(unSort, currentField.Name)
 			}
-		} else {
-			unSort = append(unSort, currentField.Name)
 		}
 
 		if defineTag, ok := o.define[currentField.Name]; ok {
@@ -80,7 +88,7 @@ func (o *ObjectGrid[T]) guessHeaders() {
 
 	// 最后吧没有指定排序的加上
 	for _, v := range unSort {
-		o.sort[len(o.sort)] = v
+		o.sort[len(o.sort)+1] = v
 	}
 }
 

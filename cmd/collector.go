@@ -49,7 +49,7 @@ func listCollectors(cmd *cobra.Command, args []string) {
 		fmt.Printf("unmarshal error: %s ", err)
 		return
 	}
-
+	
 	dataCollection := collection(collectors).Each(func(item *agent.Collector) {
 		if item.Style == "Date" {
 			item.Path = time.Now().Format(item.Path)

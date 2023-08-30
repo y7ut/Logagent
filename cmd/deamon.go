@@ -69,6 +69,13 @@ func startProcess(cmd *cobra.Command, args []string) error {
 		Env:  os.Environ(),
 	}
 
+	logStd, err := os.OpenFile(filepath.Join(filepath.Dir(pidFile), "start.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatal(os.Getpid(), ": failed to open start log file:", err)
+	}
+	runnerCmd.Stderr = logStd
+	runnerCmd.Stdout = logStd
+
 	runnerCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	err = runnerCmd.Start()
@@ -76,13 +83,13 @@ func startProcess(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start Bifrost: %s", err)
 	}
 
-	//TODO： 需要等待3秒再离开，因为有可能启动失败了，要确保成功才离开
-
+	// <-time.After(5 * time.Second)
 	err = os.WriteFile(pidFile, []byte(strconv.Itoa(runnerCmd.Process.Pid)), 0666)
 	if err != nil {
 		return fmt.Errorf("failed to record pid, you may not be able to stop the program with `./bifrost stop`")
 	}
 	fmt.Println("🎏 bifrost started...")
+
 	return nil
 }
 

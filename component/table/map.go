@@ -81,23 +81,33 @@ func (i *MapGrid[H, T]) Render() (columns []table.Column, rows []table.Row) {
 	gmpRows := i.Rows()
 	columns = make([]table.Column, 0, len(gmpHeaders))
 	rows = make([]table.Row, 0, len(gmpRows))
-	for _, v := range gmpHeaders {
 
-		header := fmt.Sprint(v)
-
-		column := table.Column{
-			Title: header,
-			Width: len(header) * 2,
-		}
-		columns = append(columns, column)
-	}
-
+	maxLen := make(map[int]int, len(gmpHeaders))
 	for _, v := range gmpRows {
 		tmpLine := make([]string, 0)
 		for k := range v {
-			tmpLine = append(tmpLine, fmt.Sprint(v[k]))
+			tmpItem := fmt.Sprint(v[k])
+			if len(tmpItem) > maxLen[k] {
+				maxLen[k] = len(tmpItem)
+			}
+			tmpLine = append(tmpLine, tmpItem)
 		}
 		rows = append(rows, tmpLine)
+	}
+
+	for i, v := range gmpHeaders {
+
+		header := fmt.Sprint(v)
+
+		if len(header) > maxLen[i] {
+			maxLen[i] = len(header)
+		}
+
+		column := table.Column{
+			Title: header,
+			Width: maxLen[i] + 3,
+		}
+		columns = append(columns, column)
 	}
 	return
 }

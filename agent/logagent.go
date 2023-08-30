@@ -125,6 +125,7 @@ func InitAgent(c Collector, ctx context.Context) (*LogAgent, error) {
 		Location:  &tail.SeekInfo{Offset: offset, Whence: 1},
 		MustExist: false, // true则没有找到文件就报错并结束，false则没有找到文件就阻塞保持住
 		Poll:      true,  // 使用Linux的Poll函数，poll的作用是把当前的文件指针挂到等待队列
+		Logger:    tail.DiscardingLogger,
 	}
 	tailer, err := tail.TailFile(fileName, config)
 

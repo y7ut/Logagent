@@ -2,7 +2,7 @@
 *.exe
 /log
 logagent
-bifrost
+bifrost*
 bifrost.conf
 logagent.conf
 /data

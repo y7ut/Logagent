@@ -9,14 +9,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-type Collector struct {
-	Style string `json:"style" gird_column:"日志规则" gird_sort:"4"`
-	Path  string `json:"path" gird_column:"路径" gird_sort:"1"`
-	Topic string `json:"topic" gird_column:"日志主题" gird_sort:"2"`
-	Exist string `json:"_" gird_column:"是否存在" gird_sort:"4"`
-}
-
-// etcd配置加载
+// getEtcdCollectorConfig etcd配置加载
 func getEtcdCollectorConfig() (collectors []Collector, err error) {
 
 	logConfig, err := etcd.GetLogConfToEtcd()
@@ -34,7 +27,7 @@ func getEtcdCollectorConfig() (collectors []Collector, err error) {
 	return collectors, nil
 }
 
-// 返回
+// watchEtcdConfig 监听etcd中的事件，会通过下面的 Get Change 计算出事件的变更
 func watchEtcdConfig(ctx context.Context) {
 	for {
 		select {
@@ -55,9 +48,9 @@ func watchEtcdConfig(ctx context.Context) {
 					default:
 						continue
 					case "DEL":
-						Close <- &diff
+						CloseChan <- diff
 					case "PUT":
-						Start <- &diff
+						StartChan <- diff
 					}
 				case clientv3.EventTypeDelete:
 					// 节点开启的时候不会出现突然删除的情况所以不考虑
@@ -69,7 +62,11 @@ func watchEtcdConfig(ctx context.Context) {
 	}
 }
 
-// 获取Agent 中 Collector 的变更 有三种类型 CREATED  新增Agent PUT 新增Collector DEL 删除 Collector
+// getCollectorChangeWithEvent 获取Agent 中 Collector 的变更
+// 有三种类型 changeType
+// 1: CREATED  初始化, 一般指新增了 Agent，还没有注册 Collector
+// 2: PUT      新增了 Collector
+// 3: DEL      删除了 Collector
 func getCollectorChangeWithEvent(event *clientv3.Event) (different Collector, changeType string, err error) {
 
 	var currentCollectors []Collector

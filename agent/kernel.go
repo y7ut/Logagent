@@ -1,117 +1,41 @@
 package agent
 
 import (
-	"context"
-	"fmt"
 	"io"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
+	"path/filepath"
 
-	"github.com/y7ut/logagent/etcd"
+	"github.com/y7ut/logagent/pkg/file"
 )
 
-func Init() *App {
+var (
+	app *App
+)
 
-	_, err := os.Stat(dataPath)
+func Init(dataPath string, logPath string, logFile string) {
 
-	if err != nil && os.IsNotExist(err) {
-		log.Println("runtime dir not found.")
-		err := os.Mkdir(dataPath, os.ModePerm)
-		if err != nil {
-			panic("create Runtime dir Error")
-		} else {
-			log.Println("create runtime dir success.")
-		}
-	}
-
-	logPath := dataPath + "log/"
-
-	_, err = os.Stat(logPath)
-	if err != nil && os.IsNotExist(err) {
-		err := os.Mkdir(logPath, os.ModePerm)
-		if err != nil {
-			panic("create log dir Error")
-		} else {
-			log.Println("create log dir success.")
-		}
-	}
-
-	writerLog, err := os.OpenFile(logPath + "./bifrost.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, os.ModeAppend|os.ModePerm)
+	err := file.PathExistOrCreate(dataPath)
 	if err != nil {
-		log.Fatalf("create file log.txt failed: %v", err)
+		log.Fatalf("create runtime dir Error: %v", err)
+	}
+
+	err = file.PathExistOrCreate(logPath)
+	if err != nil {
+		log.Fatalf("create log dir Error: %v", err)
+	}
+
+	logFile = filepath.Join(logPath, logFile)
+	writerLog, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, os.ModeAppend|os.ModePerm)
+	if err != nil {
+		log.Fatalf("create log File Error: %v", err)
 	}
 	log.Default().SetFlags(log.LstdFlags)
 	log.Default().SetOutput(io.MultiWriter(writerLog, os.Stderr))
 
-	etcd.Init()
-	app := &App{Agents: make(map[string]*LogAgent)}
-	return app
+	app = NewApp(dataPath)
 }
 
-func (app *App) Run() {
-
-	Ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// 收集所有消息，每个消息中包含了应该对应Topic的Kafka-Producer
-	go KafkaSender(Ctx)
-
-	// 监听ETCD中Collector
-	go watchEtcdConfig(Ctx)
-
-	// 代理激活
-	go app.AgentRegister(Ctx)
-
-	// 代理关闭
-	go app.AgentLeave()
-
-	count, err := app.RegisterFirst()
-	
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-
-	log.Printf("total start %d logagent\n", count)
-
-	for s := range sign() {
-		switch s {
-		case syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM:
-			log.Println("Safe Exit:", s)
-			app.safeExit()
-			return
-		}
-	}
-
-}
-
-func (app *App) safeExit() {
-	AllAgents := app.allAgent()
-
-	for _, logagent := range AllAgents {
-		//没有保存的删除了
-		Close <- &logagent.Collector
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	etcd.CloseEvent()
-	os.Exit(0)
-}
-
-func sign() <-chan os.Signal {
-	c := make(chan os.Signal, 2)
-
-	signals := []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2}
-
-	// 监听信号, 判断是否忽略 sighup 信号量
-	if !signal.Ignored(syscall.SIGHUP) {
-		signals = append(signals, syscall.SIGHUP)
-	}
-
-	signal.Notify(c, signals...)
-
-	return c
+func Start() {
+	app.Run()
 }

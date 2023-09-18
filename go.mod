@@ -3,6 +3,7 @@ module github.com/y7ut/logagent
 go 1.20
 
 require (
+	github.com/charmbracelet/lipgloss v0.7.1
 	github.com/hpcloud/tail v1.0.0
 	github.com/segmentio/kafka-go v0.4.42
 	gopkg.in/ini.v1 v1.67.0
@@ -10,7 +11,6 @@ require (
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/charmbracelet/lipgloss v0.7.1 // indirect
 	github.com/containerd/console v1.0.4-0.20230313162750-1ae8d489ac81 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect

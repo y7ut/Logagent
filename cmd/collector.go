@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"container/list"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"github.com/y7ut/logagent/component/table"
 	"github.com/y7ut/logagent/conf"
 	"github.com/y7ut/logagent/etcd"
+	"github.com/y7ut/logagent/pkg/collection"
 	"gopkg.in/ini.v1"
 )
 
@@ -49,22 +49,24 @@ func listCollectors(cmd *cobra.Command, args []string) {
 		fmt.Printf("unmarshal error: %s ", err)
 		return
 	}
-	
-	dataCollection := collection(collectors).Each(func(item *agent.Collector) {
+
+	dataCollection := collection.New(collectors).Map(func(k int, item agent.Collector) agent.Collector {
 		if item.Style == "Date" {
 			item.Path = time.Now().Format(item.Path)
 		}
-	}).Each(func(item *agent.Collector) {
+		return item
+	}).Map(func(k int, item agent.Collector) agent.Collector {
 		_, err := os.Stat(item.Path)
 		if err != nil && os.IsNotExist(err) {
 			item.Exist = "❌"
-			return
+			return item
 		}
 		item.Exist = "✅"
+		return item
 	})
 
 	if cmd.Flag("filter").Value.String() != "" {
-		dataCollection.Filter(func(item *agent.Collector) bool {
+		dataCollection.Filter(func(item agent.Collector) bool {
 			return item.Style == cmd.Flag("filter").Value.String()
 		})
 	}
@@ -85,57 +87,4 @@ func init() {
 	ListCollectorCmd.Flags().StringP("config", "c", "./bifrost.conf", "config bifrost file")
 	ListCollectorCmd.Flags().StringP("filter", "f", "", "filter collector")
 	RootCmd.AddCommand(ListCollectorCmd)
-}
-
-type item interface {
-	any
-}
-
-// jian
-type Collection[T item] struct {
-	data *list.List
-}
-
-func collection[T item](d []T) *Collection[T] {
-
-	l := list.New()
-	for _, item := range d {
-		t := item
-		l.PushBack(&t)
-	}
-
-	return &Collection[T]{data: l}
-}
-
-func (c *Collection[T]) Each(lambda func(item *T)) *Collection[T] {
-	for current := c.data.Front(); current != nil; current = current.Next() {
-
-		lambda(current.Value.(*T))
-	}
-	return c
-}
-
-func (c *Collection[T]) Filter(lambda func(item *T) bool) *Collection[T] {
-	crash := list.New()
-	for current := c.data.Back(); current != nil; current = current.Prev() {
-		if !lambda(current.Value.(*T)) {
-			continue
-		}
-		crash.PushBack(current.Value.(*T))
-	}
-	c.data = crash
-	return c
-
-}
-
-func (c *Collection[T]) Len() int {
-	return c.data.Len()
-}
-
-func (c *Collection[T]) Value() []*T {
-	l := make([]*T, 0)
-	for current := c.data.Front(); current != nil; current = current.Next() {
-		l = append(l, current.Value.(*T))
-	}
-	return l
 }

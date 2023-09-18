@@ -19,7 +19,6 @@ var RunCommand = &cobra.Command{
 	},
 }
 
-
 func checkconfig(path string) {
 	_, err := os.Stat(path)
 
@@ -46,9 +45,9 @@ func run(cmd *cobra.Command, args []string) {
 		return
 	}
 	fmt.Printf("use config file[%s] start... \n", configPath)
-	app := agent.Init()
 
-	app.Run()
+	agent.Init(conf.APPConfig.Runtime.Path, conf.APPConfig.Log.Path, conf.APPConfig.Log.Name)
+	agent.Start()
 }
 
 func init() {

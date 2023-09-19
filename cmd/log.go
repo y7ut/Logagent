@@ -3,18 +3,21 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/signal"
+	"path"
 	"syscall"
 
 	"github.com/hpcloud/tail"
 	"github.com/spf13/cobra"
+	"github.com/y7ut/logagent/conf"
+	"gopkg.in/ini.v1"
 )
 
 var (
-	logFile = "./runtime/log/bifrost.log"
-	num     int
-	feed    bool
+	num  int
+	feed bool
 )
 
 // VersionCmd represents the version command
@@ -22,11 +25,18 @@ var LogCommand = &cobra.Command{
 	Use:   "logs",
 	Short: "Show logs of Bifrost",
 	Run: func(cmd *cobra.Command, args []string) {
+		configPath := cmd.Flag("config").Value.String()
+		checkconfig(configPath)
+		if err := ini.MapTo(conf.APPConfig, configPath); err != nil {
+			log.Fatalf("load ini file error: %s ", err)
+			return
+		}
 		logs()
 	},
 }
 
 func logs() {
+	logFile := path.Join(conf.APPConfig.Log.Path, conf.APPConfig.Log.Name)
 	loggg, err := os.Open(logFile)
 	if err != nil {
 		fmt.Println(err)
@@ -124,6 +134,7 @@ func tailLinesSliceOfFile(logFile *os.File, length int) []string {
 
 func init() {
 	LogCommand.Flags().IntVarP(&num, "number", "n", 5, "get last number line of logs")
+	LogCommand.Flags().StringP("config", "c", "./bifrost.conf", "config bifrost file")
 	LogCommand.Flags().BoolVarP(&feed, "feed", "f", false, "feed logs")
 	RootCmd.AddCommand(LogCommand)
 }

@@ -68,6 +68,13 @@ func ParseConfig(helper bool) *ini.File {
 
 	cfg.Section("etcd").Comment = "Etcd connection string"
 	cfg.Section("etcd").NewKey("address", etcdConn)
+
+	cfg.Section("runtime").Comment = "runtime config"
+	cfg.Section("runtime").NewKey("path", "./runtime")
+
+	cfg.Section("log").Comment = "log config"
+	cfg.Section("log").NewKey("path", "./runtime/log")
+	cfg.Section("log").NewKey("name", "bifrost.log")
 	return cfg
 }
 

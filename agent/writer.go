@@ -21,10 +21,12 @@ func KafkaSender(ctx context.Context) {
 	var start bool
 
 	tick := time.NewTicker(3 * time.Second)
-	MessageCollection := make([]kafka.Message, 0)
 	writer := sender.InitWriter()
 	bufferSize := conf.APPConfig.Kafka.QueueSize
 	constHeaders := []kafka.Header{{Key: "source_agent", Value: []byte(conf.APPConfig.ID)}}
+
+	MessageCollection := make([]kafka.Message, 0)
+	MessageAlreadySend := make([]kafka.Message, 0, bufferSize)
 
 	for {
 		select {
@@ -39,22 +41,25 @@ func KafkaSender(ctx context.Context) {
 			currentLen := len(MessageCollection)
 
 			if currentLen != 0 && start {
-				var MessageBox = make([]kafka.Message, currentLen)
+
 				if currentLen > bufferSize {
 					// 装不下切割一下
-					copy(MessageBox, MessageCollection[:bufferSize])
+					// copy 的话需要提前准备好slice的长度，感觉不是很好
+					// copy(MessageAlreadySend, MessageCollection[:bufferSize])
+					MessageAlreadySend = append(MessageAlreadySend, MessageCollection[:bufferSize]...)
 					MessageCollection = MessageCollection[bufferSize:]
 				} else {
 					// 如果缓冲区装得下，则全部写入
-					copy(MessageBox, MessageCollection)
+					MessageAlreadySend = append(MessageAlreadySend, MessageCollection...)
 					MessageCollection = MessageCollection[:0]
 				}
 
-				log.Printf("Sender total %d\n", len(MessageBox))
-				err := writer.WriteMessages(ctx, MessageBox...)
+				log.Printf("Sender total %d\n", len(MessageAlreadySend))
+				err := writer.WriteMessages(ctx, MessageAlreadySend...)
 				if err != nil {
 					log.Println("failed to write messages:", err)
 				}
+				MessageAlreadySend = MessageAlreadySend[:0]
 			}
 
 		case logmsg := <-LogChannel:
@@ -75,14 +80,14 @@ func KafkaSender(ctx context.Context) {
 			// 如果缓冲区装不下了，就触发写入
 			if len(MessageCollection) > bufferSize {
 				// 装不下切割一下
-				var MessageBox = make([]kafka.Message, bufferSize)
-				copy(MessageBox, MessageCollection[:bufferSize])
+				MessageAlreadySend = append(MessageAlreadySend, MessageCollection[:bufferSize]...)
 				MessageCollection = MessageCollection[bufferSize:]
-				log.Printf("Sender total %d\n", len(MessageBox))
-				err := writer.WriteMessages(ctx, MessageBox...)
+				log.Printf("Sender total %d\n", len(MessageAlreadySend))
+				err := writer.WriteMessages(ctx, MessageAlreadySend...)
 				if err != nil {
 					log.Println("failed to write messages:", err)
 				}
+				MessageAlreadySend = MessageAlreadySend[:0]
 			}
 		}
 

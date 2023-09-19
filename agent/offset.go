@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-// 设置文件的offset
+// putLogFileOffset 设置文件的offset
 func putLogFileOffset(dataPath string, filename string, offset int64) error {
 
 	content := []byte(strconv.FormatInt(offset, 10))
@@ -16,7 +16,7 @@ func putLogFileOffset(dataPath string, filename string, offset int64) error {
 	return err
 }
 
-// 读取
+// getLogFileOffset 读取日志的偏移位置
 func getLogFileOffset(dataPath string, filename string) (int64, error) {
 	offilename := filepath.Join(dataPath, base64.StdEncoding.EncodeToString([]byte(filename))+".offset")
 	var result int64

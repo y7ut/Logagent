@@ -11,12 +11,12 @@ import (
 )
 
 type LogAgent struct {
+	invalid   bool          // 作废标志
 	Offset    int64         // 偏移值
 	done      chan struct{} // 结束信号
 	Tail      *tail.Tail    // 这个代理的tail
 	Collector Collector     // 所服务的收集任务
 	cycle     time.Duration // 周期
-
 }
 
 func NewAgent(c Collector) (*LogAgent, error) {
@@ -94,8 +94,9 @@ func (l *LogAgent) Start(ctx context.Context) {
 			select {
 			case <-time.After(l.cycle):
 				// 正常的日期格式任务，有一个一天的倒计时
-				// 退出当天的任务，然后重新启动
+				// 退出并作废掉当天的任务，然后重新启动新的任务
 				// 注意这里不需要去退出内部的tailer啥的，统一交给上面协程中的defer去处理
+				l.invalid = true
 				CloseChan <- l.Collector
 				time.Sleep(500 * time.Millisecond)
 				StartChan <- l.Collector
@@ -124,8 +125,10 @@ func (l *LogAgent) exitTail() error {
 	if err := l.Tail.Stop(); err != nil {
 		return err
 	}
-
-	putLogFileOffset(app.runtimePath, l.Tail.Filename, offset)
+	// 如果不是作废掉的任务退出，记录偏移
+	if !l.invalid {
+		putLogFileOffset(app.runtimePath, l.Tail.Filename, offset)
+	}
 	return nil
 }
 
